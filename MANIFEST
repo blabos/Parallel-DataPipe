@@ -2,6 +2,7 @@ Changes
 Makefile.PL
 MANIFEST
 README
+t/large-payload-integrity.t
 t/pod.t
 t/Parallel-DataPipe.t
 t/style-trailing-space.t
