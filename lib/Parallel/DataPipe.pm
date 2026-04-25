@@ -184,19 +184,12 @@ sub _get_data {
     my ( $self, $fh ) = @_;
     my ( $data_size, $data );
 
-    # read 4-byte size header; retry on partial reads (POSIX allows them)
-    my $header = '';
-    while ( length($header) < 4 ) {
-        my $got = $fh->sysread( my $buf, 4 - length($header) );
+    # read 4-byte size header; a short or zero-byte read is an error
+    my $header;
+    my $got = $fh->sysread( $header, 4 );
 
-        die "sysread failed: $!"
-          unless defined $got;
-
-        last
-          unless $got;
-
-        $header .= $buf;
-    }
+    die "sysread failed: $!" unless defined $got;
+    die "unexpected EOF reading frame header" unless $got == 4;
 
     $data_size = unpack( "l", $header );
 
@@ -215,8 +208,8 @@ sub _get_data {
             my $chunk_size = min( PIPE_MAX_CHUNK_SIZE, $length - $offset );
             my $got = $fh->sysread( my $buf, $chunk_size );
 
-            die "sysread failed: $!"
-              unless defined $got;
+            die "sysread failed: $!" unless defined $got;
+            die "unexpected EOF reading payload" unless $got;
 
             $data .= $buf;    # concatenate actual bytes received
             $offset += $got;  # advance by actual, not requested
@@ -235,7 +228,10 @@ sub _put_data {
     my ( $self, $fh, $data ) = @_;
 
     unless ( defined($data) ) {
-        $fh->syswrite( pack( "l", _EOF_ ) );
+        my $written = $fh->syswrite( pack( "l", _EOF_ ) );
+        die "syswrite failed: $!" unless defined $written;
+        die "short syswrite on EOF marker" unless $written == 4;
+
         return;
     }
 
@@ -246,7 +242,12 @@ sub _put_data {
         $length = -length($data);
     }
 
-    $fh->syswrite( pack( "l", $length ) );
+    {
+        my $written = $fh->syswrite( pack( "l", $length ) );
+        die "syswrite failed: $!" unless defined $written;
+        die "short syswrite on frame header" unless $written == 4;
+    }
+    
     $length = abs($length);
     my $offset = 0;
 
@@ -254,8 +255,7 @@ sub _put_data {
         my $chunk_size = min( PIPE_MAX_CHUNK_SIZE, $length - $offset );
         my $written = $fh->syswrite( substr( $data, $offset, $chunk_size ) );
 
-        die "syswrite failed: $!"
-          unless defined $written;
+        die "syswrite failed: $!" unless defined $written;
 
         $offset += $written;    # advance by actual, not requested
     }

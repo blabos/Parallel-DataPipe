@@ -128,7 +128,7 @@ sub test_partial_sysread_handling {
             next;
         }
 
-        is( md5_hex( $r->{payload} // '' ),
+        is( md5_hex( defined( $r->{payload} ) ? $r->{payload} : '' ),
             $input[$i]->{checksum},
             "item $i: payload intact (inbound_ok=$r->{inbound_ok})" );
     }
