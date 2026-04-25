@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-# Regression tests for two framing-correctness bugs in _get_data / _put_data.
+# Regression tests for framing-correctness bugs in _get_data / _put_data.
 #
 # 1. test_partial_header_syswrite
 #    _put_data does not check the return value of syswrite() when writing
@@ -17,23 +17,30 @@ use warnings;
 #    condition stays true, and _get_data hangs forever. _get_data must die
 #    on zero-byte progress rather than loop indefinitely.
 #
-# Both tests call _get_data / _put_data directly on a minimal DataPipe
+# 3. test_destroy_no_warning_on_bare_object
+#    DESTROY compares $self->{mypid} == $$ without a defined() guard.
+#    When called on a partially-constructed object (mypid never set), Perl
+#    warns "Use of uninitialized value in numeric eq". DESTROY must be
+#    defensive against objects that never completed construction.
+#
+# Tests 1 and 2 call _get_data / _put_data directly on a minimal DataPipe
 # object (no workers forked) to isolate each failure mode precisely.
 
 use IO::Handle;
-use Test::More tests => 4;
+use Test::More tests => 5;
 use Parallel::DataPipe;
 
 use constant TIMEOUT => 10;
 
 test_partial_header_syswrite();
 test_zero_byte_payload_sysread();
+test_destroy_no_warning_on_bare_object();
 
 exit 0;
 
 # Returns a bare DataPipe object with serialiser initialised but no workers.
 sub _make_dp {
-    my $dp = bless {}, 'Parallel::DataPipe';
+    my $dp = bless { mypid => $$ }, 'Parallel::DataPipe';
     $dp->init_serializer( {} );
     return $dp;
 }
@@ -109,4 +116,26 @@ sub test_zero_byte_payload_sysread {
 
     ok( !$ok, '_get_data died with an error on unexpected EOF during payload read' )
       or diag('_get_data returned without error despite incomplete payload');
+}
+
+# DESTROY must not warn when called on an object where mypid was never set
+# (e.g. construction failed mid-way or a bare bless was used in tests).
+sub test_destroy_no_warning_on_bare_object {
+    note 'Testing DESTROY does not warn on an object without mypid.';
+
+    my @warnings;
+    {
+        local $SIG{__WARN__} = sub { push @warnings, $_[0] };
+        my $dp = bless {}, 'Parallel::DataPipe';
+
+        # undef explicitly drops the reference count to zero, triggering
+        # DESTROY now -- while the handler above is still in scope.
+        # Letting $dp go out of scope naturally would not work: Perl restores
+        # local() values before destroying lexicals, so $SIG{__WARN__} would
+        # already be gone by the time DESTROY fires.
+        undef $dp;
+    }
+
+    ok( !@warnings, 'DESTROY does not warn when mypid is not set' )
+      or diag("Unexpected warning: $warnings[0]");
 }

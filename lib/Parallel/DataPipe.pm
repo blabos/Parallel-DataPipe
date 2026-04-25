@@ -386,8 +386,8 @@ sub new {
 }
 
 sub DESTROY {
-	my $self = shift;
-    return unless $self->{mypid} == $$;
+    my $self = shift;
+    return unless defined( $self->{mypid} ) && $self->{mypid} == $$;
     $self->_kill_data_processors;
     #semctl($self->{sem_id},0,IPC_RMID,0);
 }
