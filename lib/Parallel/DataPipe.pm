@@ -1,6 +1,6 @@
 package Parallel::DataPipe;
 
-our $VERSION='0.13';
+our $VERSION='0.14';
 use 5.8.0;
 use strict;
 use warnings;
@@ -202,16 +202,15 @@ sub _get_data {
     else {
         my $length = abs($data_size);
         my $offset = 0;
-        $data = '';
+        $data = "\0" x $length; # pre-allocate buffer
 
         while ( $offset < $length ) {
             my $chunk_size = min( PIPE_MAX_CHUNK_SIZE, $length - $offset );
-            my $got = $fh->sysread( my $buf, $chunk_size );
+            my $got = $fh->sysread( $data, $chunk_size, $offset );
 
             die "sysread failed: $!" unless defined $got;
             die "unexpected EOF reading payload" unless $got;
 
-            $data .= $buf;    # concatenate actual bytes received
             $offset += $got;  # advance by actual, not requested
         }
 
@@ -253,7 +252,7 @@ sub _put_data {
 
     while ( $offset < $length ) {
         my $chunk_size = min( PIPE_MAX_CHUNK_SIZE, $length - $offset );
-        my $written = $fh->syswrite( substr( $data, $offset, $chunk_size ) );
+        my $written = $fh->syswrite( $data, $chunk_size, $offset );
 
         die "syswrite failed: $!" unless defined $written;
 

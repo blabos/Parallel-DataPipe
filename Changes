@@ -1,4 +1,11 @@
 Revision history for Perl extension Parallel::DataPipe.
+0.14  Mon Apr 27 2026
+    - Optimized _get_data and _put_data using 4-argument sysread() and
+      syswrite() with offsets. This avoids unnecessary string copying and
+      repeated concatenations.
+    - Added buffer pre-allocation in _get_data to improve memory efficiency
+      and performance for large payloads.
+
 0.13  Tue Apr 26 2026
     - Fixed silent data corruption in _get_data when sysread() transfers fewer
       bytes than requested (permitted by POSIX). The payload loop now accumulates
